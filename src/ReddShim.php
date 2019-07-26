@@ -48,6 +48,15 @@ class ReddShim extends App {
                 'masters' => [],
                 'slaves' => [],
             ];
+            if($environmentService->isSet("REDIS_{$name}_MASTERS")){
+                $redis['masters'] = explode(",", $environmentService->get("REDIS_{$name}_MASTERS"));
+                array_walk( $redis['masters'], function(&$item){ $item = trim($item); });
+            }
+            if($environmentService->isSet("REDIS_{$name}_SLAVES")){
+                $redis['slaves'] = explode(",", $environmentService->get("REDIS_{$name}_SLAVES"));
+                array_walk( $redis['slaves'], function(&$item){ $item = trim($item); });
+
+            }
         }
 
         \Kint::dump($configuredRedises);

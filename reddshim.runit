@@ -1,3 +1,4 @@
 #!/bin/bash
-/app/reddshim
-sleep 10;
+echo "Starting /app/bin/reddshim"
+/usr/bin/php7.3 /app/bin/reddshim
+echo "Oh no, it crashed!";

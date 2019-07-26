@@ -3,6 +3,7 @@
 use Gone\ReddShim\ReddShim;
 
 define("APP_ROOT", __DIR__ . "/../");
+define("APP_NAME", "ReddShim");
 
 require_once (APP_ROOT . "/vendor/autoload.php");
 

@@ -19,7 +19,8 @@ services:
       - '127.127.63.79:80:80'
       - '127.127.63.79:6377:6379'
     environment:
-      REDIS_CONFIGURED: SOLO, CLUSTER
+      REDIS_CONFIGURED: ECHO, SOLO, CLUSTER
+      REDIS_ECHO: tcp://echo:3333
       REDIS_SOLO: tcp://redis-solo:6379
       REDIS_CLUSTER_MASTERS: tcp://redis-cluster:7000,tcp://redis-cluster:7001,tcp://redis-cluster:7002
       REDIS_CLUSTER_SLAVES: tcp://redis-cluster:7003,tcp://redis-cluster:7004,tcp://redis-cluster:7005
@@ -49,3 +50,8 @@ services:
   #    timeout: 10s
   #    retries: 3
   #    start_period: 20s
+
+  echo:
+    image: golergka/go-tcp-echo
+    ports:
+      - '127.127.63.79:3333:3333'

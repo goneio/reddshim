@@ -24,7 +24,13 @@ class ReddShim extends App {
         $environmentService->set('MONOLOG_FORMAT','%channel%.%level_name%: %message%');
     }
 
+    /**
+     * @todo refactor this function into some other class
+     */
     public function initSocket(){
+        /** @var EnvironmentService $environmentService */
+        $environmentService = $this->container->get(EnvironmentService::class);
+
         $loop = EventLoopFactory::create();
         #/** @var Logger $logger */
         #$logger = $this->getApp()->getContainer()->get(Logger::class);
@@ -32,6 +38,20 @@ class ReddShim extends App {
         $logger->info("Starting socket server");
         $socket = new Socket\Server('0.0.0.0:6379', $loop);
 
+        \Kint::dump($environmentService->keys());
+        $configuredRedises = explode(",", $environmentService->get("REDIS_CONFIGURED", "DEFAULT"));
+        array_walk($configuredRedises, function(&$item){ $item = trim($item); });
+        $configuredRedises = array_flip($configuredRedises);
+        \Kint::dump($configuredRedises);
+        foreach($configuredRedises as $name => &$redis){
+            $redis = [
+                'masters' => [],
+                'slaves' => [],
+            ];
+        }
+
+        \Kint::dump($configuredRedises);
+        exit;
         // @todo make this smorter.
         $upstreamRedis = "tcp://redis-solo:6379";
         #$upstreamRedis = "tcp://echo:3333";

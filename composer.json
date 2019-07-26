@@ -17,6 +17,7 @@
     ],
     "require": {
         "php": ">=7.3",
+        "ext-sockets": "*",
         "gone.io/appcore": "dev-master",
         "react/socket": "1.3.*"
     },

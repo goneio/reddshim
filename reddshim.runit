@@ -2,3 +2,4 @@
 echo "Starting /app/bin/reddshim"
 /usr/bin/php7.3 /app/bin/reddshim
 echo "Oh no, it crashed!";
+sleep 3;

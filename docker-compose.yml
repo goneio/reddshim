@@ -11,10 +11,12 @@ services:
     volumes:
       - ./:/app
     depends_on:
+      echo:
+        condition: service_started
       redis-solo:
         condition: service_healthy
-      #redis-cluster:
-      #  condition: service_healthy
+      redis-cluster:
+        condition: service_healthy
     ports:
       - '127.127.63.79:80:80'
       - '127.127.63.79:6377:6379'
@@ -36,20 +38,20 @@ services:
       retries: 3
       start_period: 20s
 
-  #redis-cluster:
-  #  image: grokzen/redis-cluster:5.0.5
-  #  environment:
-  #    SENTINEL: "false"
-  #    STANDALONE: "false"
-  #  ports:
-  #    - '127.127.63.79:7000-7007:7000-7007'
-  #    - '127.127.63.79:5005:5002:5000-5002'
-  #  healthcheck:
-  #    test: ["CMD", "redis-cli", "-p", "7000", "PING"]
-  #    interval: 30s
-  #    timeout: 10s
-  #    retries: 3
-  #    start_period: 20s
+  redis-cluster:
+    image: grokzen/redis-cluster:5.0.5
+    environment:
+      SENTINEL: "false"
+      STANDALONE: "false"
+    ports:
+      - '127.127.63.79:7000-7007:7000-7007'
+      - '127.127.63.79:5005-5002:5000-5002'
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7000", "PING"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   echo:
     image: golergka/go-tcp-echo

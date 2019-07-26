@@ -1,0 +1,51 @@
+version: "2.4"
+
+networks:
+  default:
+
+services:
+  reddshim:
+    image: gone/reddshim
+    build:
+      context: .
+    volumes:
+      - ./:/app
+    depends_on:
+      redis-solo:
+        condition: service_healthy
+      #redis-cluster:
+      #  condition: service_healthy
+    ports:
+      - '127.127.63.79:80:80'
+      - '127.127.63.79:6377:6379'
+    environment:
+      REDIS_CONFIGURED: SOLO, CLUSTER
+      REDIS_SOLO: tcp://redis-solo:6379
+      REDIS_CLUSTER_MASTERS: tcp://redis-cluster:7000,tcp://redis-cluster:7001,tcp://redis-cluster:7002
+      REDIS_CLUSTER_SLAVES: tcp://redis-cluster:7003,tcp://redis-cluster:7004,tcp://redis-cluster:7005
+
+  redis-solo:
+    image: redis:5
+    ports:
+      - '127.127.63.79:6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "PING"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  #redis-cluster:
+  #  image: grokzen/redis-cluster:5.0.5
+  #  environment:
+  #    SENTINEL: "false"
+  #    STANDALONE: "false"
+  #  ports:
+  #    - '127.127.63.79:7000-7007:7000-7007'
+  #    - '127.127.63.79:5005:5002:5000-5002'
+  #  healthcheck:
+  #    test: ["CMD", "redis-cli", "-p", "7000", "PING"]
+  #    interval: 30s
+  #    timeout: 10s
+  #    retries: 3
+  #    start_period: 20s

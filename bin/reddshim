@@ -1,0 +1,10 @@
+#!/usr/bin/php
+<?php
+use Gone\ReddShim\ReddShim;
+
+define("APP_ROOT", __DIR__ . "/../");
+
+require_once (APP_ROOT . "/vendor/autoload.php");
+
+(new ReddShim())
+    ->initSocket();

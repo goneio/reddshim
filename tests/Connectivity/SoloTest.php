@@ -9,15 +9,6 @@ class SoloTest extends TestRedis
    /** @var PredisClient */
     protected $predis;
 
-    /** @var int */
-    private static $redisDatabaseId = 0;
-
-    public static function setUpBeforeClass()
-    {
-        parent::setUpBeforeClass();
-        self::$redisDatabaseId = rand(0,15);
-    }
-
     public function setUp()
     {
         parent::setUp();
@@ -28,7 +19,11 @@ class SoloTest extends TestRedis
                 'port' => self::PORT,
                 'database' => self::$redisDatabaseId,
                 'timeout' => 1.0,
-                'password' => 'SOLO:'.self::USERNAME.':'.self::PASSWORD,
+                'password' => implode(":", [
+                    'SOLO',
+                    self::USERNAME,
+                    self::PASSWORD
+                ]),
             ]
         );
     }

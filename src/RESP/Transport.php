@@ -272,7 +272,7 @@ class Transport
         $this->client->pause();
         $target = $this->getConnectionOptions()[$connectionRequest];
         if($target){
-            $this->connectServer($target);
+            $this->connectServer($connectionRequest, $target);
         }else{
             $this->client->write("+ERR No such server: {$connectionRequest}\r\n");
             $this->client->close();
@@ -297,15 +297,16 @@ class Transport
         return $this;
     }
 
-    public function connectServer($target)
+    public function connectServer(string $connectionRequest, array $target)
     {
         if (count($this->connections) > 0) {
             return;
         }
         $this->connections = [];
-        if ($target['solo']) {
+        if (isset($target['solo'])) {
             $this->logger->info(sprintf(
-                "Connecting to %s",
+                "Connecting to %s (%s)",
+                $connectionRequest,
                 $target['solo']
             ));
             $scope = $this;
@@ -316,7 +317,31 @@ class Transport
                     $scope->client->resume();
                     $this->client->write("+OK\r\n");
                 });
+        }else{
+            \Kint::dump($target);
+            $errorMessage = sprintf(
+                "Connecting has to %s failed, neither 'solo' or 'cluster' modes configured.",
+                $connectionRequest
+            );
+            $this->logger->crit($errorMessage);
+            $this->sendClientError($errorMessage);
+            $this->client->end();
         }
+    }
+
+    public function sendClientMessage($message)
+    {
+        $this->logger->crit(sprintf(
+            "[%s] <= %s ",
+            $this->getClientRemoteAddress(),
+            $message
+        ));
+        return $this->client->write($message);
+    }
+
+    public function sendClientError($message)
+    {
+        return $this->sendClientMessage("-ERR {$message}\r\n");
     }
 
     public function attachServer(Socket\ConnectionInterface $server): self

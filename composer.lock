@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "729ae9d6555b9f7204a821d3cb0fb494",
+    "content-hash": "ec1e2a2ea91f30c0ce46590a3f31930f",
     "packages": [
         {
             "name": "bnf/slim3-psr15",
@@ -1375,12 +1375,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/goneio/AppCore.git",
-                "reference": "b03bef2b876b3a259261a3f9339250d9ab37dff8"
+                "reference": "4f3470d4b70df7ad7f609cbbf38df89f3e1959e5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/goneio/AppCore/zipball/b03bef2b876b3a259261a3f9339250d9ab37dff8",
-                "reference": "b03bef2b876b3a259261a3f9339250d9ab37dff8",
+                "url": "https://api.github.com/repos/goneio/AppCore/zipball/4f3470d4b70df7ad7f609cbbf38df89f3e1959e5",
+                "reference": "4f3470d4b70df7ad7f609cbbf38df89f3e1959e5",
                 "shasum": ""
             },
             "require": {
@@ -1441,6 +1441,7 @@
                     "Gone\\AppCore\\Tests\\": "tests/"
                 }
             },
+            "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "GPL-3.0"
             ],
@@ -1459,11 +1460,7 @@
                 }
             ],
             "description": "A clean skeleton application basis to build services in a RAD (Rapid Application Development) method.",
-            "support": {
-                "source": "https://github.com/goneio/AppCore/tree/master",
-                "issues": "https://github.com/goneio/AppCore/issues"
-            },
-            "time": "2019-07-26T17:08:57+00:00"
+            "time": "2019-07-26T22:00:10+00:00"
         },
         {
             "name": "gone.io/inflection",
@@ -7369,7 +7366,8 @@
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=7.3"
+        "php": ">=7.2",
+        "ext-sockets": "*"
     },
     "platform-dev": []
 }

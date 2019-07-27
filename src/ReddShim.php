@@ -38,15 +38,12 @@ class ReddShim extends App {
         $logger->info("Starting socket server");
         $socket = new Socket\Server('0.0.0.0:6379', $loop);
 
-        \Kint::dump($environmentService->keys());
         $configuredRedises = explode(",", $environmentService->get("REDIS_CONFIGURED", "DEFAULT"));
         array_walk($configuredRedises, function(&$item){ $item = trim($item); });
         $configuredRedises = array_flip($configuredRedises);
-        \Kint::dump($configuredRedises);
+
         foreach($configuredRedises as $name => &$redis){
             $redis = [
-                'masters' => [],
-                'slaves' => [],
             ];
             if($environmentService->isSet("REDIS_{$name}_MASTERS")){
                 $redis['masters'] = explode(",", $environmentService->get("REDIS_{$name}_MASTERS"));
@@ -55,32 +52,18 @@ class ReddShim extends App {
             if($environmentService->isSet("REDIS_{$name}_SLAVES")){
                 $redis['slaves'] = explode(",", $environmentService->get("REDIS_{$name}_SLAVES"));
                 array_walk( $redis['slaves'], function(&$item){ $item = trim($item); });
-
+            }
+            if($environmentService->isSet("REDIS_{$name}")){
+                $redis['solo'] = explode(",", $environmentService->get("REDIS_{$name}"));
+                array_walk( $redis['solo'], function(&$item){ $item = trim($item); });
+                $redis['solo'] = reset($redis['solo']);
             }
         }
 
-        \Kint::dump($configuredRedises);
-        exit;
-        // @todo make this smorter.
-        $upstreamRedis = "tcp://redis-solo:6379";
-        #$upstreamRedis = "tcp://echo:3333";
-
-        $socket->on('connection', function (Socket\ConnectionInterface $client) use ($loop, $logger, $upstreamRedis) {
-            $logger->info(sprintf(
-                "Connecting to %s",
-                $upstreamRedis
-            ));
-            $client->pause();
-
-            (new Socket\Connector($loop))
-                ->connect($upstreamRedis)->then(function(Socket\ConnectionInterface $server) use ($loop, $logger, $client) {
-                    $server->pause();
-                    (new RESP\Transport($logger))
-                        ->attachClient($client)
-                        ->attachServer($server)
-                        ->resume()
-                    ;
-                });
+        $socket->on('connection', function (Socket\ConnectionInterface $client) use ($loop, $logger, $configuredRedises) {
+            (new RESP\Transport($logger, $loop))
+                ->attachClient($client)
+                ->setConnectionOptions($configuredRedises);
         });
 
         $loop->run();

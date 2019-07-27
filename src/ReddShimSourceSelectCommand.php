@@ -17,7 +17,7 @@ class ReddShimSourceSelectCommand
 
     public function getId()
     {
-        return 'REDDSHIM SELECT';
+        return 'REDDSHIM_SELECT';
     }
 
 }

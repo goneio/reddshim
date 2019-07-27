@@ -3,24 +3,36 @@ namespace Gone\ReddShim\Tests\Connectivity;
 
 use Gone\ReddShim\ReddShimSourceSelectCommand;
 use Gone\ReddShim\Tests\TestCommon;
+use Gone\ReddShim\Tests\TestRedis;
 use Predis\Client as PredisClient;
 use Predis\Connection\StreamConnection;
+use Predis\Response\Status;
 
-class SoloTest extends TestCommon
+class SoloTest extends TestRedis
 {
    /** @var PredisClient */
     protected $predis;
+
+    /** @var int */
+    private static $redisDatabaseId = 0;
+
+    public static function setUpBeforeClass()
+    {
+        parent::setUpBeforeClass();
+        self::$redisDatabaseId = rand(0,15);
+    }
 
     public function setUp()
     {
         parent::setUp();
         $this->predis = new PredisClient(
-            sprintf(
-                "%s://%s:%d",
-                "tcp",
-                self::ADDRESS,
-                self::PORT
-            )
+            [
+                'scheme' => 'tcp',
+                'host' => self::ADDRESS,
+                'port' => self::PORT,
+                //'database' => rand(0,15),
+                'timeout' => 1.0,
+            ]
         );
 
         // Send the REDDSHIM SOURCE $HOST command
@@ -30,10 +42,21 @@ class SoloTest extends TestCommon
                     new ReddShimSourceSelectCommand("SOLO")
                 )
         ;
+
+        //$this->predis->connect();
+        $this->predis->select(self::$redisDatabaseId);
+
+        // Something about this startup process leads to an extra "OK" buffered.. For now, this  is a filthy hack.
+        // @todo fix the underlying issue
+        /** @var StreamConnection $connection */
+        $connection = $this->predis->getConnection();
+        $connection->read();
+
     }
 
-    public function testPing()
+    public function tearDown()
     {
-        \Kint::dump($this->predis->ping());
+        $this->predis->disconnect();
+        parent::tearDown();
     }
 }

@@ -22,6 +22,8 @@ class Transport
 
     /** @var LoopInterface */
     protected $loop;
+    protected $username;
+    protected $password;
 
     public function __construct(
         EchoLogger $logger,
@@ -86,6 +88,197 @@ class Transport
         return $this;
     }
 
+    public function attachClient(Socket\ConnectionInterface $client): self
+    {
+        $this->client = $client;
+        $this->client->on('data', \Closure::fromCallable([$this, 'receiveClientMessage']));
+        $this->client->on('error', \Closure::fromCallable([$this, 'handleClientException']));
+        $this->client->on('end', \Closure::fromCallable([$this, 'endClient']));
+        $this->client->on('close', \Closure::fromCallable([$this, 'closeClient']));
+
+        $this->logger->info(sprintf(
+            "[%s] => %s",
+            $this->getClientRemoteAddress(),
+            "Connected"
+        ));
+
+        return $this;
+    }
+
+    protected function getClientRemoteAddress(): string
+    {
+        $host = parse_url($this->client->getRemoteAddress());
+        return isset($host['host']) && isset($host['port'])
+            ? "{$host['host']}:{$host['port']}"
+            : "UNKNOWN";
+    }
+
+    public function resume(): self
+    {
+        $this->logger->info("Resuming C&S connections");
+        $this->client->resume();
+        $this->server->resume();
+    }
+
+    /**
+     * @return Socket\ConnectionInterface[]
+     */
+    public function getConnections(): array
+    {
+        return $this->connections;
+    }
+
+    /**
+     * @param Socket\ConnectionInterface[] $connections
+     * @return Transport
+     */
+    public function setConnections(array $connections): Transport
+    {
+        $this->connections = $connections;
+        return $this;
+    }
+
+    /**
+     * @return LoopInterface
+     */
+    public function getLoop(): LoopInterface
+    {
+        return $this->loop;
+    }
+
+    /**
+     * @param LoopInterface $loop
+     * @return Transport
+     */
+    public function setLoop(LoopInterface $loop): Transport
+    {
+        $this->loop = $loop;
+        return $this;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getUsername()
+    {
+        return $this->username;
+    }
+
+    /**
+     * @param mixed $username
+     * @return Transport
+     */
+    public function setUsername($username)
+    {
+        $this->username = $username;
+        return $this;
+    }
+
+    /**
+     * @return mixed
+     */
+    public function getPassword()
+    {
+        return $this->password;
+    }
+
+    /**
+     * @param mixed $password
+     * @return Transport
+     */
+    public function setPassword($password)
+    {
+        $this->password = $password;
+        return $this;
+    }
+
+    protected function receiveClientMessage($data)
+    {
+        $parsedData = $this->parseClientMessage($data);
+        if ($this->server || count($this->connections) > 0) {
+            $success = $this->server->write($data);
+            if ($success) {
+                $this->logger->info(sprintf(
+                    "[%s] => %s",
+                    $this->getClientRemoteAddress(),
+                    $parsedData
+                ));
+            } else {
+                $this->logger->crit(sprintf(
+                    "[%s] => %s [FAILED] ",
+                    $this->getClientRemoteAddress(),
+                    $parsedData
+                ));
+            }
+        } else {
+            $this->logger->info(sprintf(
+                "[%s NOCONN] => %s",
+                $this->getClientRemoteAddress(),
+                $parsedData
+            ));
+
+        }
+    }
+
+    protected function parseClientMessage($data): ?string
+    {
+        $prefix = substr($data, 0, 1);
+
+        switch ($prefix) {
+            case '*':
+                return $this->parseClientRespArray(substr($data, 1));
+                break;
+            case '+':
+                return substr($data, 1);
+            default:
+                return $data;
+        }
+    }
+
+    protected function parseClientRespArray(string $respArray): string
+    {
+        $output = [];
+        $respArray = explode("\r\n", trim($respArray));
+        $words = array_chunk(array_slice($respArray, 1), 2);
+        foreach ($words as $word) {
+            // @todo implement length validation.
+            list($length, $buf) = $word;
+            if (stripos($buf, " ")) {
+                $output[] = "\"{$buf}\"";
+            } else {
+                $output[] = $buf;
+            }
+        }
+        $output = implode(" ", $output);
+        $this->parseClientCommand($output);
+        return trim($output);
+    }
+
+    protected function parseClientCommand($commandString)
+    {
+        @list($command, $payload) = explode(" ", $commandString, 2);
+
+        switch ($command) {
+            case 'AUTH':
+                $server = $this->clientConnectAuth($payload);
+                $this->clientConnectRequestToServer($server);
+                break;
+            default:
+        }
+    }
+
+    protected function clientConnectRequestToServer($connectionRequest)
+    {
+        $this->client->pause();
+        $target = $this->getConnectionOptions()[$connectionRequest];
+        if($target){
+            $this->connectServer($target);
+        }else{
+            $this->client->write("+ERR No such server: {$connectionRequest}\r\n");
+            $this->client->close();
+        }
+    }
+
     /**
      * @return array
      */
@@ -104,31 +297,29 @@ class Transport
         return $this;
     }
 
-    public function attachClient(Socket\ConnectionInterface $client): self
+    public function connectServer($target)
     {
-        $this->client = $client;
-        $this->client->on('data', \Closure::fromCallable([$this, 'receiveClientMessage']));
-        $this->client->on('error', \Closure::fromCallable([$this, 'handleClientException']));
-        $this->client->on('end', \Closure::fromCallable([$this, 'endClient']));
-        $this->client->on('close', \Closure::fromCallable([$this, 'closeClient']));
-
-        $this->logger->info(sprintf(
-            "[%s] => %s",
-            $this->getClientRemoteAddress(),
-            "Connected"
-        ));
-
-        return $this;
+        if (count($this->connections) > 0) {
+            return;
+        }
+        $this->connections = [];
+        if ($target['solo']) {
+            $this->logger->info(sprintf(
+                "Connecting to %s",
+                $target['solo']
+            ));
+            $scope = $this;
+            (new Socket\Connector($this->loop))
+                ->connect($target['solo'])->then(function (Socket\ConnectionInterface $server) use ($scope) {
+                    $scope->connections[] = $server;
+                    $scope->attachServer($server);
+                    $scope->client->resume();
+                    $this->client->write("+OK\r\n");
+                });
+        }
     }
 
-    public function resume() : self
-    {
-        $this->logger->info("Resuming C&S connections");
-        $this->client->resume();
-        $this->server->resume();
-    }
-
-    public function attachServer(Socket\ConnectionInterface $server) : self
+    public function attachServer(Socket\ConnectionInterface $server): self
     {
         $this->server = $server;
         $this->server->on('data', \Closure::fromCallable([$this, 'receiveServerMessage']));
@@ -146,112 +337,26 @@ class Transport
         return $this;
     }
 
-    protected function receiveClientMessage($data)
+    protected function getServerRemoteAddress(): string
     {
-        $parsedData = $this->parseClientMessage($data);
-        if($this->server || count($this->connections) > 0){
-            $success = $this->server->write($data);
-            if($success){
-                $this->logger->info(sprintf(
-                    "[%s] => %s",
-                    $this->getClientRemoteAddress(),
-                    $parsedData
-                ));
-            }else{
-                $this->logger->crit(sprintf(
-                    "[%s] => %s [FAILED] ",
-                    $this->getClientRemoteAddress(),
-                    $parsedData
-                ));
-            }
-        }else{
-            $parsedData = $this->parseClientMessage($data);
-            $this->logger->info(sprintf(
-                "[%s NOCONN] => %s",
-                $this->getClientRemoteAddress(),
-                $parsedData
-            ));
-
-        }
+        $host = parse_url($this->server->getRemoteAddress());
+        return isset($host['host']) && isset($host['port'])
+            ? "{$host['host']}:{$host['port']}"
+            : "UNKNOWN";
     }
 
-    protected function parseClientMessage($data): ?string
+    protected function clientConnectAuth($payload)
     {
-        $prefix = substr($data, 0,1);
-        switch($prefix){
-            case '*':
-                return $this->parseClientRespArray(substr($data, 1));
-                break;
-            case '+':
-                return substr($data, 1);
-            default:
-                return "Unhandled RESP prefix: {$prefix}";
-        }
-    }
-
-    protected function parseClientRespArray(string $respArray) : string
-    {
-        $output = [];
-        $respArray = explode("\r\n", trim($respArray));
-        $words = array_chunk(array_slice($respArray,1), 2);
-        foreach($words as $word){
-            list($length, $buf) = $word;
-            if(stripos($buf, " ")){
-                $output[] = "\"{$buf}\"";
-            }else{
-                $output[] = $buf;
-            }
-        }
-        $output = implode(" ", $output);
-        $this->parseClientCommand($output);
-        return trim($output);
-    }
-
-    protected function parseClientCommand($commandString){
-
-        @list($command, $payload) = explode(" ", $commandString, 2);
-
-        switch($command){
-            case 'REDDSHIM_SELECT':
-                $this->clientConnectRequestToServer($payload);
-                break;
-            default:
-                // @todo sensible error
-        }
-    }
-
-    protected function clientConnectRequestToServer($connectionRequest)
-    {
-        $this->client->pause();
-        $target = $this->getConnectionOptions()[$connectionRequest];
-        $this->connectServer($target);
-    }
-
-    public function connectServer($target)
-    {
-        if(count($this->connections) > 0){
-            return;
-        }
-        $this->connections = [];
-        if($target['solo']){
-            $this->logger->info(sprintf(
-                "Connecting to %s",
-                $target['solo']
-            ));
-            $scope = $this;
-            (new Socket\Connector($this->loop))
-                ->connect($target['solo'])->then(function(Socket\ConnectionInterface $server) use ($scope) {
-                    $scope->connections[] = $server;
-                    $scope->attachServer($server);
-                    $scope->client->resume();
-                    $this->client->write("+OK\r\n");
-                });
-        }
+        list($server, $username, $password) = explode(":", $payload);
+        $this->setUsername($username)
+            ->setPassword($password);
+        // @todo user validation goes here.
+        return $server;
     }
 
     protected function receiveServerMessage($data)
     {
-        if($this->client->isWritable()) {
+        if ($this->client->isWritable()) {
             $success = $this->client->write($data);
             $parsedData = $this->parseClientMessage($data);
             if ($success) {
@@ -318,21 +423,5 @@ class Transport
             "[%s] == CloseServer",
             $this->getServerRemoteAddress()
         ));
-    }
-
-    protected function getClientRemoteAddress() : string
-    {
-        $host = parse_url($this->client->getRemoteAddress());
-        return isset($host['host']) && isset($host['port'])
-            ? "{$host['host']}:{$host['port']}"
-            : "UNKNOWN";
-    }
-
-    protected function getServerRemoteAddress() : string
-    {
-        $host = parse_url($this->server->getRemoteAddress());
-        return isset($host['host']) && isset($host['port'])
-            ? "{$host['host']}:{$host['port']}"
-            : "UNKNOWN";
     }
 }

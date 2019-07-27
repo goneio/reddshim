@@ -4,7 +4,7 @@ namespace Gone\ReddShim\Tests;
 use Predis\Client as PredisClient;
 use Predis\Response\Status;
 
-abstract class TestRedis extends TestCommon{
+abstract class TestRedis extends TestCommon {
 
     /** @var PredisClient */
     protected $predis;

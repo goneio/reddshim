@@ -13,6 +13,7 @@ before_install:
   - sudo mv docker-compose /usr/local/bin
   - composer install
   - docker-compose down -v
+  - docker-compose pull
   - docker-compose build --pull
   - docker-compose up -d reddshim
 

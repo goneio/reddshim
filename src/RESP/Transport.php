@@ -16,6 +16,8 @@ class Transport
     /** @var Socket\ConnectionInterface */
     protected $server;
     /** @var Socket\ConnectionInterface[] */
+    protected $servers;
+    /** @var Socket\ConnectionInterface[] */
     protected $connections = [];
     /** @var array */
     protected $connectionOptions = [];
@@ -303,13 +305,14 @@ class Transport
             return;
         }
         $this->connections = [];
+        $scope = $this;
+
         if (isset($target['solo'])) {
             $this->logger->info(sprintf(
                 "Connecting to %s (%s)",
                 $connectionRequest,
                 $target['solo']
             ));
-            $scope = $this;
             (new Socket\Connector($this->loop))
                 ->connect($target['solo'])->then(function (Socket\ConnectionInterface $server) use ($scope) {
                     $scope->connections[] = $server;
@@ -317,6 +320,38 @@ class Transport
                     $scope->client->resume();
                     $this->client->write("+OK\r\n");
                 });
+        }elseif(isset($target['masters']) || isset($target['slaves'])){
+            $this->logger->info(sprintf(
+                "Connecting to %s (%d write, %d read)",
+                $connectionRequest,
+                count($target['masters']),
+                count($target['slaves'])
+            ));
+            $targetServerCount = count($target['masters']) + count($target['slaves']);
+            foreach($target['masters'] as $master) {
+                $scope->connections[] = [];
+                (new Socket\Connector($this->loop))
+                    ->connect($master)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
+                        $scope->connections[] = $server;
+                        $scope->attachServerMaster($server, true);
+                        if(count($this->connections) == $targetServerCount){
+                            $scope->client->resume();
+                            $this->client->write("+OK\r\n");
+                        }
+                    });
+            }
+            foreach($target['slaves'] as $slave) {
+                $scope->connections[] = [];
+                (new Socket\Connector($this->loop))
+                    ->connect($slave)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
+                        $scope->connections[] = $server;
+                        $scope->attachServerSlave($server);
+                        if(count($this->connections) == $targetServerCount){
+                            $scope->client->resume();
+                            $this->client->write("+OK\r\n");
+                        }
+                    });
+            }
         }else{
             \Kint::dump($target);
             $errorMessage = sprintf(
@@ -341,7 +376,7 @@ class Transport
 
     public function sendClientError($message)
     {
-        return $this->sendClientMessage("-ERR {$message}\r\n");
+        return $this->sendClientMessage("-{$message}\r\n");
     }
 
     public function attachServer(Socket\ConnectionInterface $server): self
@@ -360,6 +395,35 @@ class Transport
             ));
 
         return $this;
+    }
+
+    public function attachServerClusterMode(bool $isWritable, Socket\ConnectionInterface $server) : self
+    {
+        $server->on('data', \Closure::fromCallable([$this, 'receiveServerMessage']));
+        $server->on('error', \Closure::fromCallable([$this, 'handleServerException']));
+        $server->on('end', \Closure::fromCallable([$this, 'endServer']));
+        $server->on('close', \Closure::fromCallable([$this, 'closeServer']));
+
+        $this->logger
+            ->info(sprintf(
+                "Connected to %s on behalf of %s",
+                $this->getServerRemoteAddress(),
+                $this->getClientRemoteAddress()
+            ));
+
+        $this->servers[$isWritable ? 'masters' : 'slaves'][] = $server;
+
+        return $this;
+    }
+
+    public function attachServerMaster(Socket\ConnectionInterface $server) : self
+    {
+        return $this->attachServerClusterMode(true, $server);
+    }
+
+    public function attachServerSlave(Socket\ConnectionInterface $server) : self
+    {
+        return $this->attachServerClusterMode(false, $server);
     }
 
     protected function getServerRemoteAddress(): string

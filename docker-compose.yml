@@ -5,7 +5,7 @@ networks:
 
 services:
   reddshim:
-    image: gone/reddshim
+    #image: gone/reddshim
     build:
       context: .
     volumes:

@@ -1,5 +1,29 @@
-FROM gone/php:nginx-php7.3
+FROM gone/php:nginx-php7.3 AS base
 
+FROM base AS watchman-build
+RUN apt-get -qq update && \
+    apt-get -yq install \
+        git \
+        autoconf automake \
+        build-essential \
+        python-dev \
+        libtool \
+        libssl-dev \
+        pkg-config
+
+RUN  git clone https://github.com/facebook/watchman.git && \
+    cd watchman/ && \
+    git checkout v4.9.0 && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    cat Makefile && \
+    make install
+
+RUN watchman --version && \
+    which watchman
+
+FROM base AS reddshim
 RUN apt-get -qq update && \
     apt-get -yq install --no-install-recommends \
         redis-tools \

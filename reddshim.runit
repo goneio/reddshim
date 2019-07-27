@@ -1,5 +1,9 @@
 #!/bin/bash
 echo "Starting /app/bin/reddshim"
-/usr/bin/php7.3 /app/bin/reddshim
-echo "Oh no, it crashed!";
-sleep 3;
+watchman watch /app
+watchman -- trigger /app restart-on-change '*' -- killall php
+while true; do
+  /usr/bin/php /app/bin/reddshim
+  echo "Oh no, it crashed! Or may have been restarted!";
+  sleep 3;
+done

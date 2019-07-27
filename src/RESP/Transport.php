@@ -73,14 +73,6 @@ class Transport
     }
 
     /**
-     * @return Socket\ConnectionInterface
-     */
-    public function getServer(): Socket\ConnectionInterface
-    {
-        return $this->server;
-    }
-
-    /**
      * @param Socket\ConnectionInterface $server
      * @return Transport
      */
@@ -194,11 +186,21 @@ class Transport
         return $this;
     }
 
+    public function getServer() : Socket\ConnectionInterface
+    {
+        if($this->server) {
+            return $this->server;
+        }else{
+            \Kint::dump($this->servers);
+            return $this->servers['masters'][array_rand($this->servers['masters'])];
+        }
+    }
+
     protected function receiveClientMessage($data)
     {
         $parsedData = $this->parseClientMessage($data);
         if ($this->server || count($this->connections) > 0) {
-            $success = $this->server->write($data);
+            $success = $this->getServer()->write($data);
             if ($success) {
                 $this->logger->info(sprintf(
                     "[%s] => %s",
@@ -381,18 +383,19 @@ class Transport
 
     public function attachServer(Socket\ConnectionInterface $server): self
     {
-        $this->server = $server;
-        $this->server->on('data', \Closure::fromCallable([$this, 'receiveServerMessage']));
-        $this->server->on('error', \Closure::fromCallable([$this, 'handleServerException']));
-        $this->server->on('end', \Closure::fromCallable([$this, 'endServer']));
-        $this->server->on('close', \Closure::fromCallable([$this, 'closeServer']));
+        $server->on('data', \Closure::fromCallable([$this, 'receiveServerMessage']));
+        $server->on('error', \Closure::fromCallable([$this, 'handleServerException']));
+        $server->on('end', \Closure::fromCallable([$this, 'endServer']));
+        $server->on('close', \Closure::fromCallable([$this, 'closeServer']));
 
         $this->logger
             ->info(sprintf(
                 "Connected to %s on behalf of %s",
-                $this->getServerRemoteAddress(),
+                $server->getRemoteAddress(),
                 $this->getClientRemoteAddress()
             ));
+
+        $this->server = $server;
 
         return $this;
     }
@@ -407,7 +410,7 @@ class Transport
         $this->logger
             ->info(sprintf(
                 "Connected to %s on behalf of %s",
-                $this->getServerRemoteAddress(),
+                $server->getRemoteAddress(),
                 $this->getClientRemoteAddress()
             ));
 

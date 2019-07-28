@@ -5,5 +5,4 @@ echo "Starting /app/bin/reddshim"
 while true; do
   /usr/bin/php /app/bin/reddshim
   echo "Oh no, it crashed! Or may have been restarted!";
-  sleep 3;
 done

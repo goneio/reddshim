@@ -3,9 +3,14 @@
 namespace Gone\ReddShim\RESP;
 
 use Gone\ReddShim\EchoLogger;
+use Gone\ReddShim\Rewrites\MSetRewrite;
+use Gone\ReddShim\Server;
 use Monolog\Logger;
+use Predis\Client as PredisClient;
+use Predis\Command\RawCommand;
 use React\EventLoop\LoopInterface;
 use React\Socket;
+use Closure;
 
 class Transport
 {
@@ -13,13 +18,15 @@ class Transport
     protected $logger;
     /** @var Socket\ConnectionInterface */
     protected $client;
-    /** @var Socket\ConnectionInterface */
+    /** @var Server */
     protected $server;
     /** @var Socket\ConnectionInterface[][] */
     protected $servers = [
         'masters' => [],
         'slaves' => [],
     ];
+    /** @var array[] */
+    protected $clusterConfig;
     /** @var array */
     protected $connectionOptions = [];
 
@@ -86,10 +93,10 @@ class Transport
     public function attachClient(Socket\ConnectionInterface $client): self
     {
         $this->client = $client;
-        $this->client->on('data', \Closure::fromCallable([$this, 'receiveClientMessage']));
-        $this->client->on('error', \Closure::fromCallable([$this, 'handleClientException']));
-        $this->client->on('end', \Closure::fromCallable([$this, 'endClient']));
-        $this->client->on('close', \Closure::fromCallable([$this, 'closeClient']));
+        $this->client->on('data', Closure::fromCallable([$this, 'receiveClientMessage']));
+        $this->client->on('error', Closure::fromCallable([$this, 'handleClientException']));
+        $this->client->on('end', Closure::fromCallable([$this, 'endClient']));
+        $this->client->on('close', Closure::fromCallable([$this, 'closeClient']));
 
         $this->logger->info(sprintf(
             "[%s] => %s",
@@ -112,7 +119,8 @@ class Transport
     {
         $this->logger->info("Resuming C&S connections");
         $this->client->resume();
-        $this->server->resume();
+        $this->server->getConnection()->resume();
+        return $this;
     }
 
     /**
@@ -169,7 +177,7 @@ class Transport
         return $this;
     }
 
-    public function getServer() : Socket\ConnectionInterface
+    public function getServer() : Server
     {
         if($this->server) {
             return $this->server;
@@ -178,11 +186,77 @@ class Transport
         }
     }
 
+    private function getClusterNodeByHash(int $hash) : ? string
+    {
+        #\Kint::dump($this->clusterConfig);
+        foreach($this->clusterConfig as $address => $clusterNode){
+            if($hash >= $clusterNode['lower'] && $hash <= $clusterNode['upper']){
+                return $address;
+            }
+        }
+        return null;
+    }
+
+    public function getServerByHash(int $hash, bool $isWritable = false) : ? Server
+    {
+        $address = $this->getClusterNodeByHash($hash);
+        foreach(array_merge($this->servers['masters'], $this->servers['slaves']) as $server){
+            /** @var $server Server */
+            if($server->getConnection()->getRemoteAddress() == $address){
+                return $server;
+            }
+        }
+        return null;
+    }
+
+    public function rewriteRequest($data) : bool
+    {
+        $parsedData = $this->parseClientMessage($data);
+        @list($command, $arguments) = explode(" ", $parsedData,2);
+        $command = strtoupper($command);
+        #\Kint::dump(
+        #    $command, $arguments
+        #);
+        switch($command){
+            case 'MGET':
+            case 'MSET':
+                return (new MSetRewrite($this))->rewrite($command, $arguments);
+
+            case 'PING':
+            default:
+                return $this->getServer()->getConnection()->write($data);
+        }
+    }
+
     protected function receiveClientMessage($data)
     {
         $parsedData = $this->parseClientMessage($data);
-        if ($this->server || (count($this->servers['masters']) + count($this->servers['slaves']))  > 0) {
-            $success = $this->getServer()->write($data);
+        $isSoloMode = !empty($this->server);
+        $isClusterMode = (count($this->servers['masters']) + count($this->servers['slaves'])) > 0;
+        switch(substr($parsedData, stripos($parsedData, " "))){
+            case 'RSSTATS':
+                //@todo implement stats feature
+                $this->sendClientMessage("+RSSTATS not yet implemented");
+                return;
+            case 'RSRESTART':
+                //@todo implement authentication checks for this.
+                $this->sendClientMessage("+RSRESTART server is restarting");
+                $this->client->end();
+                $this->loop->addTimer(1.0, function(){
+                    die("Server stopped by RSRESTART command.\n");
+                });
+                return;
+            case 'RSPING':
+                $this->sendClientMessage("+RSPONG");
+                return;
+        }
+        if ($isSoloMode || $isClusterMode) {
+            // Decide if we should intervene or not.
+            if($isClusterMode){
+                $success = $this->rewriteRequest($data);
+            }else {
+                $success = $this->getServer()->getConnection()->write($data);
+            }
             if ($success) {
                 $this->logger->info(sprintf(
                     "[%s] => %s",
@@ -202,6 +276,11 @@ class Transport
                 $this->getClientRemoteAddress(),
                 $parsedData
             ));
+            switch(substr($parsedData, stripos($parsedData, " "))){
+                case 'PING':
+                    $this->sendClientMessage("+PONG");
+                    break;
+            }
         }
     }
 
@@ -220,7 +299,7 @@ class Transport
         }
     }
 
-    protected function parseClientRespArray(string $respArray): string
+    public function parseClientRespArray(string $respArray): string
     {
         $output = [];
         $respArray = explode("\r\n", trim($respArray));
@@ -237,6 +316,20 @@ class Transport
         $output = implode(" ", $output);
         $this->parseClientCommand($output);
         return trim($output);
+    }
+
+    public function createRespArray(array $respArray) : string
+    {
+        $statements = [];
+        foreach($respArray as $elem){
+            $statements[] = "$" . strlen($elem) . "\r\n" . $elem;
+        }
+
+        return "*" . count($statements) . (
+            count($statements ) > 0
+                ? "\r\n" . implode("\r\n", $statements)
+                : null
+            );
     }
 
     protected function parseClientCommand($commandString)
@@ -313,24 +406,26 @@ class Transport
             foreach($target['masters'] as $master) {
                 (new Socket\Connector($this->loop))
                     ->connect($master)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
-                        $scope->attachServerMaster($server, true);
+                        $scope->attachServerClusterMode(true, $server);
                         $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
                         $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
                         if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");
+                            $this->postClusterInitialisation();
                         }
                     });
             }
             foreach($target['slaves'] as $slave) {
                 (new Socket\Connector($this->loop))
                     ->connect($slave)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
-                        $scope->attachServerSlave($server);
+                        $scope->attachServerClusterMode(false, $server);
                         $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
                         $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
                         if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");
+                            $this->postClusterInitialisation();
                         }
                     });
             }
@@ -346,19 +441,36 @@ class Transport
         }
     }
 
+    protected function postClusterInitialisation()
+    {
+        $command = RawCommand::create('CLUSTER', 'SLOTS');
+        $clusterSlots = $this->getServer()->getControlPlane()->executeCommand($command);
+
+        foreach($clusterSlots as $clusterSlot){
+            $host = "tcp://{$clusterSlot[2][0]}:{$clusterSlot[2][1]}";
+            $lower = $clusterSlot[0];
+            $upper = $clusterSlot[1];
+            $this->clusterConfig[$host] = [
+               "lower" => $lower,
+               "upper" => $upper,
+            ];
+        }
+        #\Kint::dump($this->clusterConfig);
+    }
+
     public function sendClientMessage($message)
     {
-        $this->logger->crit(sprintf(
+        $this->logger->info(sprintf(
             "[%s] <= %s ",
             $this->getClientRemoteAddress(),
             $message
         ));
-        return $this->client->write($message);
+        return $this->client->write("{$message}\r\n");
     }
 
     public function sendClientError($message)
     {
-        return $this->sendClientMessage("-{$message}\r\n");
+        return $this->sendClientMessage("-{$message}");
     }
 
     public function attachServer(Socket\ConnectionInterface $server): self
@@ -375,7 +487,7 @@ class Transport
                 $this->getClientRemoteAddress()
             ));
 
-        $this->server = $server;
+        $this->server = new Server($server, true);
 
         return $this;
     }
@@ -394,7 +506,7 @@ class Transport
                 $this->getClientRemoteAddress()
             ));
 
-        $this->servers[$isWritable ? 'masters' : 'slaves'][] = $server;
+        $this->servers[$isWritable ? 'masters' : 'slaves'][] = new Server($server, $isWritable);
 
         return $this;
     }
@@ -411,7 +523,7 @@ class Transport
 
     protected function getServerRemoteAddress(): string
     {
-        $host = parse_url($this->server->getRemoteAddress());
+        $host = parse_url($this->server->getConnection()->getRemoteAddress());
         return isset($host['host']) && isset($host['port'])
             ? "{$host['host']}:{$host['port']}"
             : "UNKNOWN";

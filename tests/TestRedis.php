@@ -83,11 +83,11 @@ abstract class TestRedis extends TestCommon {
     public function testHMSet()
     {
         $data = [
-            $this->generateKey() => self::$faker->words(5, true),
-            $this->generateKey() => self::$faker->words(5, true),
+            "field-" . rand(1000,9999) => self::$faker->words(3, true),
+            "field-" . rand(1000,9999) => self::$faker->words(3, true),
         ];
 
-        $key = $this->generateKey();
+        $key = "key:" . rand(1000,9999);
 
         $hSetResponse = $this->predis->hmset($key, $data);
 

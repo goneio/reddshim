@@ -29,8 +29,9 @@ class RequestRewriter
         return $this->clusterStrategy->getSlotByKey($key);
     }
 
-    public const FUNCTIONS_KEYS_AND_VALUES    = ['SET', 'MSET', ];
-    public const FUNCTIONS_KEY_ONLY           = ['GET', 'MGET', ];
+    public const FUNCTIONS_KEYS_AND_VALUES    = ['SET', 'MSET', 'HMSET', ];
+    public const FUNCTIONS_KEY_ONLY           = ['GET', 'MGET', 'HMGET', ];
+    public const FUNCTIONS_KEYS_FIELDS_AND_VALUES = ['HMGET', 'HMSET', ];
     public const FUNCTIONS_TAKE_ONE_ARGUMENT  = ['GET', 'SET', ];
     public const FUNCTIONS_RETURN_ONE_ARGUMENT = ['GET', ];
     public const FUNCTIONS_PLAYBACK_ALL_NODES = ['FLUSHALL', ];
@@ -40,20 +41,39 @@ class RequestRewriter
         $this->buckets = [];
         $this->releventServers = [];
         $function = strtoupper($function);
-        \Kint::$max_depth = 3;
+        \Kint::$max_depth = 4;
         preg_match_all('/"(?:\\\\.|[^\\\\"])*"|\S+/', $argumentString, $arguments);
         $arguments = $arguments[0];
         array_walk($arguments, function(&$a){
             $a = trim($a, "\"");
         });
-        \Kint::dump($function, $argumentString, $arguments);
 
         /** @var Server[] $relevantServers */
         $relevantServers = [];
         $buckets = [];
         /** @var Status[] $responses */
         $responses = [];
-        if(in_array($function, self::FUNCTIONS_KEYS_AND_VALUES)){
+
+        #\Kint::dump($arguments);
+
+        if(in_array($function, self::FUNCTIONS_KEYS_FIELDS_AND_VALUES)){
+            $key = array_shift($arguments);
+            #\Kint::dump($arguments);
+            $hash = $this->calculateHash($key);
+            $server = $this->transport->getServerByHash($hash, true);
+            $relevantServers[$server->getConnection()->getRemoteAddress()] = $server;
+            if(stripos($function, "SET")) {
+                $data = [];
+                foreach (array_chunk($arguments, 2) as $chunk) {
+                    list($field, $value) = $chunk;
+                    $data[$field] = $value;
+                }
+                $buckets[$server->getConnection()->getRemoteAddress()][$hash][$key] = $data;
+            }elseif(stripos($function, "GET")){
+                $buckets[$server->getConnection()->getRemoteAddress()][$hash][$key] = $arguments;
+            }
+            #\Kint::dump($key, $hash, $data, $buckets);
+        }elseif(in_array($function, self::FUNCTIONS_KEYS_AND_VALUES)){
             foreach(array_chunk($arguments,2) as $chunk){
                 list($key, $value) = $chunk;
                 $hash = $this->calculateHash($key);
@@ -70,6 +90,7 @@ class RequestRewriter
             }
         }
 
+        // If we need to do this function on every node, override the buckets.
         if(in_array($function, self::FUNCTIONS_PLAYBACK_ALL_NODES)){
             foreach($this->transport->getAllWritableServers() as $i => $server){
                 $buckets[$server->getConnection()->getRemoteAddress()][$i][] = null;
@@ -77,31 +98,42 @@ class RequestRewriter
             }
         }
 
-        \Kint::dump($buckets);
+        #\Kint::dump($buckets);
 
+        // For each bucket and slot, connect to the control plane and replay the bucket at redis.
         foreach($buckets as $address => $slots){
             foreach($slots as $slot => $data) {
-                if(in_array($function, self::FUNCTIONS_TAKE_ONE_ARGUMENT)){
-                    foreach($data as $k => $v) {
-                        if(is_numeric($k)) {
-                            $response = $relevantServers[$address]->getControlPlane()->$function($v);
-                        }else{
-                            $response = $relevantServers[$address]->getControlPlane()->$function($k, $v);
+                $controlPlane = $relevantServers[$address]->getControlPlane();
+                if(in_array($function, self::FUNCTIONS_TAKE_ONE_ARGUMENT)) {
+                    foreach ($data as $k => $v) {
+                        if (is_numeric($k)) {
+                            #\Kint::dump($function, $v);
+                            $response = $controlPlane->$function($v);
+                        } else {
+                            #\Kint::dump($function, $k, $v);
+                            $response = $controlPlane->$function($k, $v);
                         }
                         $responses[$address][] = $response;
                     }
-                }else {
+                }elseif(in_array($function, self::FUNCTIONS_KEYS_FIELDS_AND_VALUES)){
+                    foreach($data as $key => $subData){
+                        $response = $controlPlane->$function($key, $subData);
+                        $responses[$address][] = $response;
+                    }
+                }else{
                     if (empty(array_filter($data))) {
-                        $response = $relevantServers[$address]->getControlPlane()->$function();
+                        #\Kint::dump($function);
+                        $response = $controlPlane->$function();
                     }else{
-                        $response = $relevantServers[$address]->getControlPlane()->$function($data);
+                        #\Kint::dump($function, $data);
+                        $response = $controlPlane->$function($data);
                     }
                     $responses[$address][] = $response;
                 }
             }
         }
 
-        \Kint::dump($responses);
+        #\Kint::dump($responses);
 
         // Check to see if any of the responses were of type Status
         $hasStatusResponse = false;
@@ -132,11 +164,9 @@ class RequestRewriter
         if(is_array(reset($finalResponse))) {
             $finalResponse = call_user_func_array('array_merge', $finalResponse);
         }
-        \Kint::dump($finalResponse);
         if(in_array($function, self::FUNCTIONS_RETURN_ONE_ARGUMENT) && count($finalResponse) == 1){
             $finalResponse = reset($finalResponse);
         }
-        \Kint::dump($finalResponse);
         $this->transport->sendClientMessage(
             is_array($finalResponse)
                 ? $this->transport->createRespArray($finalResponse)

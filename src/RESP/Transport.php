@@ -432,7 +432,7 @@ class Transport
                     ->connect($master)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
                         $scope->attachServerClusterMode(true, $server);
                         $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
-                        $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
+                        #$this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
                         if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");
@@ -445,7 +445,7 @@ class Transport
                     ->connect($slave)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
                         $scope->attachServerClusterMode(false, $server);
                         $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
-                        $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
+                        #$this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
                         if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");

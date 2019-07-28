@@ -9,6 +9,9 @@ abstract class TestRedis extends TestCommon {
     /** @var PredisClient */
     protected $predis;
 
+    /**
+     * @group util
+     */
     public function testPing()
     {
         /** @var Status $pingResponse */
@@ -21,6 +24,9 @@ abstract class TestRedis extends TestCommon {
         $this->assertEquals($message, $pingResponse);
     }
 
+    /**
+     * @group get
+     */
     public function testSet()
     {
         $key = $this->generateKey();
@@ -33,15 +39,21 @@ abstract class TestRedis extends TestCommon {
     }
 
     /**
+     * @group get
      * @depends testSet
      */
     public function testGet($data)
     {
-        list($key, $value) = $data;
+        list($key, $expected) = $data;
 
-        $this->assertEquals($value, $this->predis->get($key));
+        $value = $this->predis->get($key);
+
+        $this->assertEquals($expected, $value);
     }
 
+    /**
+     * @group mget
+     */
     public function testMSet(){
         $data = [
             $this->generateKey() => self::$faker->words(5, true),
@@ -56,6 +68,7 @@ abstract class TestRedis extends TestCommon {
     }
 
     /**
+     * @group mget
      * @depends testMSet
      */
     public function testMGet($data)
@@ -64,6 +77,9 @@ abstract class TestRedis extends TestCommon {
         $this->assertEquals(array_values($data), $result);
     }
 
+    /**
+     * @group hmget
+     */
     public function testHMSet()
     {
         $data = [
@@ -81,17 +97,12 @@ abstract class TestRedis extends TestCommon {
     }
 
     /**
+     * @group hmget
      * @depends testHMSet
      */
     public function testHMGet($pass){
         list($key, $data) = $pass;
         $hMGetResponse = $this->predis->hmget($key, array_keys($data));
         $this->assertEquals(array_values($data), $hMGetResponse);
-    }
-
-    protected function generateKey() : string
-    {
-        $words = self::$faker->words(3);
-        return implode(":", $words);
     }
 }

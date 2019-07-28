@@ -28,6 +28,7 @@ abstract class TestRedisCli extends TestCommon {
         $this->assertEquals("OK", $this->redisCli("SET {$key} '{$value}'"));
         $this->assertEquals($value, $this->redisCli("GET {$key}"));
         $this->assertEquals("OK", $this->redisCli("FLUSHALL"));
+        sleep(2);
         $this->assertEmpty($this->redisCli("GET {$key}"));
     }
 

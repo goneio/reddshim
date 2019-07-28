@@ -17,4 +17,10 @@ class TestCommon extends TestCase{
         parent::setUpBeforeClass();
         self::$redisDatabaseId = rand(0,15);
     }
+
+    protected function generateKey() : string
+    {
+        $words = self::$faker->words(3);
+        return implode(":", $words);
+    }
 }

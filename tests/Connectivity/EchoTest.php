@@ -5,7 +5,7 @@ use Gone\ReddShim\Tests\TestCommon;
 
 abstract class EchoTest extends TestCommon {
 
-        public function setUp()
+    public function setUp()
     {
         parent::setUp();
     }

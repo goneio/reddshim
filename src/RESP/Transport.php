@@ -197,6 +197,16 @@ class Transport
         return null;
     }
 
+    public function getAllServers() : array
+    {
+        return array_merge($this->servers['masters'], $this->servers['slaves']);
+    }
+
+    public function getAllWritableServers() : array
+    {
+        return $this->servers['masters'];
+    }
+
     public function getServerByHash(int $hash, bool $isWritable = false) : ? Server
     {
         $address = $this->getClusterNodeByHash($hash);
@@ -214,18 +224,27 @@ class Transport
         $parsedData = $this->parseClientMessage($data);
         @list($command, $arguments) = explode(" ", $parsedData,2);
         $command = strtoupper($command);
-        #\Kint::dump(
-        #    $command, $arguments
-        #);
-        switch($command){
-            case 'MGET':
-            case 'MSET':
-                return (new RequestRewriter($this))->rewrite($command, $arguments);
 
-            case 'PING':
-            default:
-                return $this->getServer()->getConnection()->write($data);
+        $rewritableCommands = array_merge(
+            RequestRewriter::FUNCTIONS_KEYS_AND_VALUES,
+            RequestRewriter::FUNCTIONS_KEY_ONLY,
+            RequestRewriter::FUNCTIONS_PLAYBACK_ALL_NODES
+        );
+
+        $rewritableRequest = in_array($command, $rewritableCommands);
+
+        #\Kint::dump(
+        #    $command,
+        #    $arguments,
+        #    $rewritableCommands,
+        #    $rewritableRequest
+        #);
+
+        if($rewritableRequest){
+            return (new RequestRewriter($this))->rewrite($command, $arguments);
         }
+
+        return $this->getServer()->getConnection()->write($data);
     }
 
     protected function receiveClientMessage($data)
@@ -316,6 +335,11 @@ class Transport
         $output = implode(" ", $output);
         $this->parseClientCommand($output);
         return trim($output);
+    }
+
+    public function createRespString(string $string) : string
+    {
+        return $string . "\r\n";
     }
 
     public function createRespArray(array $respArray) : string

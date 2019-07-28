@@ -17,8 +17,6 @@ class Transport
     protected $server;
     /** @var Socket\ConnectionInterface[] */
     protected $servers;
-    /** @var Socket\ConnectionInterface[] */
-    protected $connections = [];
     /** @var array */
     protected $connectionOptions = [];
 
@@ -115,24 +113,6 @@ class Transport
     }
 
     /**
-     * @return Socket\ConnectionInterface[]
-     */
-    public function getConnections(): array
-    {
-        return $this->connections;
-    }
-
-    /**
-     * @param Socket\ConnectionInterface[] $connections
-     * @return Transport
-     */
-    public function setConnections(array $connections): Transport
-    {
-        $this->connections = $connections;
-        return $this;
-    }
-
-    /**
      * @return LoopInterface
      */
     public function getLoop(): LoopInterface
@@ -191,7 +171,6 @@ class Transport
         if($this->server) {
             return $this->server;
         }else{
-            \Kint::dump($this->servers);
             return $this->servers['masters'][array_rand($this->servers['masters'])];
         }
     }
@@ -199,7 +178,7 @@ class Transport
     protected function receiveClientMessage($data)
     {
         $parsedData = $this->parseClientMessage($data);
-        if ($this->server || count($this->connections) > 0) {
+        if ($this->server || count($this->servers) > 0) {
             $success = $this->getServer()->write($data);
             if ($success) {
                 $this->logger->info(sprintf(
@@ -303,10 +282,9 @@ class Transport
 
     public function connectServer(string $connectionRequest, array $target)
     {
-        if (count($this->connections) > 0) {
+        if ($this->server || count($this->servers) > 0) {
             return;
         }
-        $this->connections = [];
         $scope = $this;
 
         if (isset($target['solo'])) {
@@ -317,12 +295,12 @@ class Transport
             ));
             (new Socket\Connector($this->loop))
                 ->connect($target['solo'])->then(function (Socket\ConnectionInterface $server) use ($scope) {
-                    $scope->connections[] = $server;
                     $scope->attachServer($server);
                     $scope->client->resume();
                     $this->client->write("+OK\r\n");
                 });
         }elseif(isset($target['masters']) || isset($target['slaves'])){
+            $this->client->pause();
             $this->logger->info(sprintf(
                 "Connecting to %s (%d write, %d read)",
                 $connectionRequest,
@@ -331,24 +309,24 @@ class Transport
             ));
             $targetServerCount = count($target['masters']) + count($target['slaves']);
             foreach($target['masters'] as $master) {
-                $scope->connections[] = [];
                 (new Socket\Connector($this->loop))
                     ->connect($master)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
-                        $scope->connections[] = $server;
                         $scope->attachServerMaster($server, true);
-                        if(count($this->connections) == $targetServerCount){
+                        $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
+                        $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
+                        if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");
                         }
                     });
             }
             foreach($target['slaves'] as $slave) {
-                $scope->connections[] = [];
                 (new Socket\Connector($this->loop))
                     ->connect($slave)->then(function (Socket\ConnectionInterface $server) use ($scope, $targetServerCount) {
-                        $scope->connections[] = $server;
                         $scope->attachServerSlave($server);
-                        if(count($this->connections) == $targetServerCount){
+                        $currentServerCount = count($this->servers['masters']) + count($this->servers['slaves']);
+                        $this->logger->info(sprintf("Connected to %d of %d servers...", $currentServerCount, $targetServerCount));
+                        if($currentServerCount == $targetServerCount){
                             $scope->client->resume();
                             $this->client->write("+OK\r\n");
                         }

@@ -24,6 +24,8 @@ RUN watchman --version && \
     which watchman
 
 FROM base AS reddshim
+COPY --from=watchman-build /usr/local/bin/watchman /usr/local/bin/
+RUN watchman --version
 RUN apt-get -qq update && \
     apt-get -yq install --no-install-recommends \
         redis-tools \

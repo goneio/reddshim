@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "Starting /app/bin/reddshim"
-watchman watch /app
-watchman -- trigger /app restart-on-change '*' -- killall php
+#watchman watch /app
+#watchman -- trigger /app restart-on-change '*' -- killall php
 while true; do
   /usr/bin/php /app/bin/reddshim
   echo "Oh no, it crashed! Or may have been restarted!";

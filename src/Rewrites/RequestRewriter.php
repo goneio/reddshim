@@ -29,10 +29,10 @@ class RequestRewriter
         return $this->clusterStrategy->getSlotByKey($key);
     }
 
-    public const FUNCTIONS_KEYS_AND_VALUES    = ['SET', 'MSET', 'HMSET', ];
+    public const FUNCTIONS_KEYS_AND_VALUES    = ['SET', 'MSET', 'HMSET', 'APPEND', ];
     public const FUNCTIONS_KEY_ONLY           = ['GET', 'MGET', 'HMGET', ];
     public const FUNCTIONS_KEYS_FIELDS_AND_VALUES = ['HMGET', 'HMSET', ];
-    public const FUNCTIONS_TAKE_ONE_ARGUMENT  = ['GET', 'SET', ];
+    public const FUNCTIONS_TAKE_ONE_ARGUMENT  = ['GET', 'SET', 'APPEND', ];
     public const FUNCTIONS_RETURN_ONE_ARGUMENT = ['GET', ];
     public const FUNCTIONS_PLAYBACK_ALL_NODES = ['FLUSHALL', ];
 
@@ -44,6 +44,7 @@ class RequestRewriter
         \Kint::$max_depth = 4;
         preg_match_all('/"(?:\\\\.|[^\\\\"])*"|\S+/', $argumentString, $arguments);
         $arguments = $arguments[0];
+        \Kint::dump($argumentString, $arguments);
         array_walk($arguments, function(&$a){
             $a = trim($a, "\"");
         });
@@ -54,11 +55,10 @@ class RequestRewriter
         /** @var Status[] $responses */
         $responses = [];
 
-        #\Kint::dump($arguments);
+        \Kint::dump($function, $arguments, $argumentString);
 
         if(in_array($function, self::FUNCTIONS_KEYS_FIELDS_AND_VALUES)){
             $key = array_shift($arguments);
-            #\Kint::dump($arguments);
             $hash = $this->calculateHash($key);
             $server = $this->transport->getServerByHash($hash, true);
             $relevantServers[$server->getConnection()->getRemoteAddress()] = $server;
@@ -98,7 +98,7 @@ class RequestRewriter
             }
         }
 
-        #\Kint::dump($buckets);
+        \Kint::dump($buckets);
 
         // For each bucket and slot, connect to the control plane and replay the bucket at redis.
         foreach($buckets as $address => $slots){
@@ -122,10 +122,10 @@ class RequestRewriter
                     }
                 }else{
                     if (empty(array_filter($data))) {
-                        #\Kint::dump($function);
+                        \Kint::dump($function);
                         $response = $controlPlane->$function();
                     }else{
-                        #\Kint::dump($function, $data);
+                        \Kint::dump($function, $data);
                         $response = $controlPlane->$function($data);
                     }
                     $responses[$address][] = $response;
@@ -160,18 +160,33 @@ class RequestRewriter
         }
 
         // Otherwise, return a merged set of responses.
+        \Kint::dump($responses);
         $finalResponse = call_user_func_array('array_merge', $responses);
+        \Kint::dump($finalResponse);
         if(is_array(reset($finalResponse))) {
             $finalResponse = call_user_func_array('array_merge', $finalResponse);
+            \Kint::dump($finalResponse);
         }
-        if(in_array($function, self::FUNCTIONS_RETURN_ONE_ARGUMENT) && count($finalResponse) == 1){
+        if(count($finalResponse) == 1){
             $finalResponse = reset($finalResponse);
+            \Kint::dump($finalResponse);
         }
-        $this->transport->sendClientMessage(
-            is_array($finalResponse)
-                ? $this->transport->createRespArray($finalResponse)
-                : "+{$finalResponse}"
-        );
+        \Kint::dump($function, $arguments, $finalResponse);
+
+        // Generate the RESP output
+        $output = is_array($finalResponse)
+            ? $this->transport->createRespArray($finalResponse)
+            : "+{$finalResponse}";
+        $this->transport->sendClientMessage($output);
+
+        // Generate the debug message
+        $debug = "{$function} ";
+        foreach($arguments as $argument){
+            $debug.= "{$argument} ";
+        }
+        $debug.= "=> {$output}";
+        $this->transport->getLogger()->debug($debug);
+
         return true;
 
     }

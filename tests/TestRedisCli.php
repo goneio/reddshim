@@ -47,6 +47,17 @@ abstract class TestRedisCli extends TestCommon {
         $this->assertEquals("", $this->redisCli("GET not-a-key"));
     }
 
+    /**
+     * @depends testSet
+     */
+    public function testAppend($n)
+    {
+        list($key, $value) = $n;
+        $append = self::$faker->word;
+        $this->assertEquals(strlen($value. $append), $this->redisCli("APPEND {$key} \"{$append}\""));
+        $this->assertEquals($value . $append, $this->redisCli("GET {$key}"));
+    }
+
 
 
 }

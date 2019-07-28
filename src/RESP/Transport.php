@@ -8,13 +8,14 @@ use Gone\ReddShim\Server;
 use Monolog\Logger;
 use Predis\Client as PredisClient;
 use Predis\Command\RawCommand;
+use Psr\Log\LoggerInterface;
 use React\EventLoop\LoopInterface;
 use React\Socket;
 use Closure;
 
 class Transport
 {
-    /** @var Logger */
+    /** @var LoggerInterface */
     protected $logger;
     /** @var Socket\ConnectionInterface */
     protected $client;
@@ -36,7 +37,7 @@ class Transport
     protected $password;
 
     public function __construct(
-        EchoLogger $logger,
+        LoggerInterface $logger,
         LoopInterface $loop
     )
     {
@@ -45,18 +46,18 @@ class Transport
     }
 
     /**
-     * @return Logger
+     * @return LoggerInterface
      */
-    public function getLogger(): Logger
+    public function getLogger(): LoggerInterface
     {
         return $this->logger;
     }
 
     /**
-     * @param Logger $logger
+     * @param LoggerInterface $logger
      * @return Transport
      */
-    public function setLogger(Logger $logger): Transport
+    public function setLogger(LoggerInterface $logger): Transport
     {
         $this->logger = $logger;
         return $this;
@@ -504,12 +505,12 @@ class Transport
         $server->on('end', \Closure::fromCallable([$this, 'endServer']));
         $server->on('close', \Closure::fromCallable([$this, 'closeServer']));
 
-        $this->logger
-            ->info(sprintf(
-                "Connected to %s on behalf of %s",
-                $server->getRemoteAddress(),
-                $this->getClientRemoteAddress()
-            ));
+        #$this->logger
+        #    ->info(sprintf(
+        #        "Connected to %s on behalf of %s",
+        #        $server->getRemoteAddress(),
+        #        $this->getClientRemoteAddress()
+        #    ));
 
         $this->server = new Server($server, true);
 

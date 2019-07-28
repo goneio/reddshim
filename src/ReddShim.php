@@ -6,6 +6,7 @@ use Gone\AppCore\Redis\Redis;
 use Gone\AppCore\Services\EnvironmentService;
 use Gone\ReddShim\RESP;
 use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 use React\EventLoop\Factory as EventLoopFactory;
 use React\Socket;
 
@@ -32,7 +33,7 @@ class ReddShim extends App {
         $environmentService = $this->container->get(EnvironmentService::class);
 
         $loop = EventLoopFactory::create();
-        #/** @var Logger $logger */
+        /** @var LoggerInterface $logger */
         #$logger = $this->getApp()->getContainer()->get(Logger::class);
         $logger = new EchoLogger();
         $logger->info("Starting socket server");

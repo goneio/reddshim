@@ -105,4 +105,18 @@ abstract class TestRedis extends TestCommon {
         $hMGetResponse = $this->predis->hmget($key, array_keys($data));
         $this->assertEquals(array_values($data), $hMGetResponse);
     }
+
+    /**
+     * @group get
+     * @depends testSet
+     */
+    public function testAppend($n){
+        list($key, $value) = $n;
+        $append = self::$faker->word;
+        /** @var Status $response */
+        $response = $this->predis->append($key, $append);
+        $this->assertInstanceOf(Status::class, $response);
+        $this->assertEquals(strlen($value . $append), $response->getPayload());
+        $this->assertEquals($value . $append, $this->predis->get($key));
+    }
 }

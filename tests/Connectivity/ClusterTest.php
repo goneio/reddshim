@@ -17,7 +17,8 @@ class ClusterTest extends TestRedis
                 'scheme' => 'tcp',
                 'host' => self::ADDRESS,
                 'port' => self::PORT,
-                'database' => self::$redisDatabaseId,
+                // Redis cluster mode doesn't support database numbers
+                //'database' => self::$redisDatabaseId,
                 'timeout' => 1.0,
                 'password' => implode(":", [
                     'CLUSTER',

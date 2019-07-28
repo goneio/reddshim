@@ -20,6 +20,16 @@
             <file>tests/RedisCli/SoloTest.php</file>
             <file>tests/RedisCli/ClusterTest.php</file>
         </testsuite>
+
+        <testsuite name="solo">
+            <file>tests/RedisCli/SoloTest.php</file>
+            <file>tests/Connectivity/SoloTest.php</file>
+        </testsuite>
+
+        <testsuite name="cluster">
+            <file>tests/RedisCli/ClusterTest.php</file>
+            <file>tests/Connectivity/ClusterTest.php</file>
+        </testsuite>
     </testsuites>
 
     <filter>

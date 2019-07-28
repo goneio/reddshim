@@ -26,7 +26,8 @@ class ClusterTest extends TestRedisCli{
         $this->redisCliCommand->addFlag(new Command\Flag("h",self::ADDRESS));
         $this->redisCliCommand->addFlag(new Command\Flag("p",self::PORT));
         $this->redisCliCommand->addFlag(new Command\Flag("a", implode(":", ['CLUSTER', self::USERNAME, self::PASSWORD])));
-        $this->redisCliCommand->addFlag(new Command\Flag("n", self::$redisDatabaseId));
+        // Redis cluster mode doesn't support database numbers
+        //$this->redisCliCommand->addFlag(new Command\Flag("n", self::$redisDatabaseId));
     }
 
     public function redisCli(string $command, $debug = false): string

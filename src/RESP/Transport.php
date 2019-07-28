@@ -15,8 +15,11 @@ class Transport
     protected $client;
     /** @var Socket\ConnectionInterface */
     protected $server;
-    /** @var Socket\ConnectionInterface[] */
-    protected $servers;
+    /** @var Socket\ConnectionInterface[][] */
+    protected $servers = [
+        'masters' => [],
+        'slaves' => [],
+    ];
     /** @var array */
     protected $connectionOptions = [];
 
@@ -178,7 +181,7 @@ class Transport
     protected function receiveClientMessage($data)
     {
         $parsedData = $this->parseClientMessage($data);
-        if ($this->server || count($this->servers) > 0) {
+        if ($this->server || (count($this->servers['masters']) + count($this->servers['slaves']))  > 0) {
             $success = $this->getServer()->write($data);
             if ($success) {
                 $this->logger->info(sprintf(
@@ -199,7 +202,6 @@ class Transport
                 $this->getClientRemoteAddress(),
                 $parsedData
             ));
-
         }
     }
 
@@ -282,7 +284,7 @@ class Transport
 
     public function connectServer(string $connectionRequest, array $target)
     {
-        if ($this->server || count($this->servers) > 0) {
+        if ($this->server || (count($this->servers['masters']) + count($this->servers['slaves']))  > 0) {
             return;
         }
         $scope = $this;

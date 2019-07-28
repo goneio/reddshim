@@ -3,7 +3,7 @@
 namespace Gone\ReddShim\RESP;
 
 use Gone\ReddShim\EchoLogger;
-use Gone\ReddShim\Rewrites\MSetRewrite;
+use Gone\ReddShim\Rewrites\RequestRewriter;
 use Gone\ReddShim\Server;
 use Monolog\Logger;
 use Predis\Client as PredisClient;
@@ -220,7 +220,7 @@ class Transport
         switch($command){
             case 'MGET':
             case 'MSET':
-                return (new MSetRewrite($this))->rewrite($command, $arguments);
+                return (new RequestRewriter($this))->rewrite($command, $arguments);
 
             case 'PING':
             default:

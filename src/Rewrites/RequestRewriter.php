@@ -8,7 +8,7 @@ use Predis\Cluster\ClusterStrategy;
 use Predis\Cluster\RedisStrategy;
 use Predis\Response\Status;
 
-class MSetRewrite
+class RequestRewriter
 {
     /** @var Transport */
     protected $transport;

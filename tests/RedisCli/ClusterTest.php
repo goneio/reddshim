@@ -14,6 +14,8 @@ class ClusterTest extends TestRedisCli{
     /** @var Command */
     protected $redisCliCommand;
 
+    protected static $redisCliDebugMode = true;
+
     public function setUp()
     {
         parent::setUp();
@@ -30,11 +32,11 @@ class ClusterTest extends TestRedisCli{
         //$this->redisCliCommand->addFlag(new Command\Flag("n", self::$redisDatabaseId));
     }
 
-    public function redisCli(string $command, $debug = false): string
+    public function redisCli(string $command): string
     {
         $this->redisCliCommand->addParam(new UnescapedCommand($command));
         $output = trim($this->runner->run($this->redisCliCommand));
-        if($debug){
+        if(self::$redisCliDebugMode){
             \Kint::dump($this->redisCliCommand->__toString(), $output);
         }
         $this->initRedisCli();

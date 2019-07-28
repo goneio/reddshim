@@ -5,7 +5,7 @@ use Gone\UUID\UUID;
 
 abstract class TestRedisCli extends TestCommon {
 
-    abstract protected function redisCli(string $command, $debug = false) : string;
+    abstract protected function redisCli(string $command) : string;
 
     public function testPing()
     {
